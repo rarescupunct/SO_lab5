@@ -120,4 +120,70 @@ int main(int argc, char* argv[]){
 
 #else
 
+int main(){
+    std::vector<int>resultFd(PROCESSES);
+    std::vector<pid_t> pids(PROCESSES);
+
+    for(int i = 0; i < PROCESSES; ++i){
+        
+        int toChild[2], fromChild[2];
+        if(pipe(toChild) < 0 || pipe(fromChild) < 0){
+            perror("pipe");
+            return 1;
+        }
+
+        pid_t pid = fork();
+        if(pid < 0){
+            perror("fork");
+            return 1;
+        }
+
+        //child process
+        if(pid == 0){
+            close(toChild[1]);
+            close(fromChild[0]);
+
+            for(int j = 0; j < i; ++j) close(resultFd[j]);
+            int range[2];
+            if(read(toChild[0], range, sizeof(range)) != (ssize_t)sizeof(range)) _exit(1);
+            close(toChild[0]);
+            for(int n = range[0]; n <= range[1]; ++n)
+                if(isPrime(n))
+                    if(write(fromChild[1], &n, sizeof(n)) < 0) _exit(1);
+            
+            close(fromChild[1]);
+            _exit(0);
+        }
+
+        //parent process
+        close(toChild[0]);
+        close(fromChild[1]);
+        int range[2] = {i * SIZE + 1, (i + 1) * SIZE};
+        if(write(toChild[1], range, sizeof(range)) < 0){
+            perror("write");
+            return 1;
+        }
+        close(toChild[1]);
+        resultFd[i] = fromChild[0];
+        pids[i]=pid;
+    }
+
+    int total = 0;
+    for(int i = 0; i < PROCESSES; ++i){
+        std::printf("----- Process %d, interval %d-%d ---\n", i, i * SIZE + 1, (i + 1) * SIZE);
+        int n;
+        while(read(resultFd[i], &n, sizeof(n)) == (ssize_t)sizeof(n)){
+            std::printf("%d ", n);
+            ++total;
+        }
+        std::printf("\n");
+        close(resultFd[i]);
+        waitpid(pids[i], nullptr, 0);
+    }
+
+    std::printf("\nTotal numere prime pana la %d: %d\n", PROCESSES * SIZE, total);
+    return 0;
+}
+
+
 #endif
